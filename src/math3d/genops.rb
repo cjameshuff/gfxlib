@@ -1,0 +1,171 @@
+#!/usr/bin/env ruby
+
+# Generate operator implementations for vector arithmetic.
+# See vec3.h for more information.
+
+DIM_NAMES = ['x', 'y', 'z', 'w']
+ARITH_OPS = ['+', '-', '*', '/', '%']
+
+def svlist(op, dims)
+    DIM_NAMES[0, dims].map{|dim| "lhs #{op} rhs.#{dim}"}.join(", ")
+end
+def vslist(op, dims)
+    DIM_NAMES[0, dims].map{|dim| "lhs.#{dim} #{op} rhs"}.join(", ")
+end
+def vvlist(op, dims)
+    DIM_NAMES[0, dims].map{|dim| "lhs.#{dim} #{op} rhs.#{dim}"}.join(", ")
+end
+
+def arith_op(op, dims)
+    type = "tvec#{dims}"
+    
+    $fout.puts "//*******************************************************************************"
+    $fout.puts "// LHS: #{type}, operator: #{op}"
+    $fout.puts "//*******************************************************************************"
+    
+    # scalar OP vector
+    $fout.puts "// scalar #{op} #{type}"
+    $fout.puts "template<typename T1, typename T2>"
+    $fout.puts "#{type}<T2> operator#{op}(const T1 & lhs, const #{type}<T2> & rhs)"
+    $fout.puts "{"
+    $fout.puts "    return #{type}<T2>(#{svlist(op, dims)});"
+    $fout.puts "}"
+    $fout.puts ""
+    
+    # vector OP scalar
+    $fout.puts "// #{type} #{op} scalar"
+    $fout.puts "template<typename T1, typename T2>"
+    $fout.puts "#{type}<T1> operator#{op}(const #{type}<T1> & lhs, const T2 & rhs)"
+    $fout.puts "{"
+    $fout.puts "    return #{type}<T2>(#{vslist(op, dims)});"
+    $fout.puts "}"
+    $fout.puts ""
+    
+    # vector OP= scalar
+    $fout.puts "// #{type} #{op}= scalar"
+    $fout.puts "template<typename T1, typename T2>"
+    $fout.puts "#{type}<T1> & operator#{op}=(#{type}<T1> & lhs, const T2 & rhs)"
+    $fout.puts "{"
+    $fout.puts "    return (lhs = lhs #{op} rhs);"
+    $fout.puts "}"
+    $fout.puts ""
+    
+    # vector OP vector, dimension of lhs is dims, rhs is each possible dimension
+    [2, 3, 4].each {|rdims|
+        rtype = "tvec#{rdims}"
+        $fout.puts "// #{type} #{op} #{rtype}"
+        $fout.puts "template<typename T1, typename T2>"
+        $fout.puts "#{type}<T1> operator#{op}(const #{type}<T1> & lhs, const #{rtype}<T2> & rhs)"
+        if(rdims < dims)
+            $fout.puts "{"
+            $fout.puts "    return #{type}<T2>(#{vvlist(op, rdims) + ", 0"*(dims - rdims)});"
+            $fout.puts "}"
+        else
+            $fout.puts "{"
+            $fout.puts "    return #{type}<T2>(#{vvlist(op, dims)});"
+            $fout.puts "}"
+        end
+        $fout.puts ""
+        
+        # op= variant
+        if(rdims <= dims)
+            $fout.puts "// #{type} #{op}= #{rtype}"
+            $fout.puts "template<typename T1, typename T2>"
+            $fout.puts "#{type}<T1> & operator#{op}=(#{type}<T1> & lhs, const #{rtype}<T2> & rhs)"
+            $fout.puts "{"
+            $fout.puts "    return (lhs = lhs #{op} rhs);"
+            $fout.puts "}"
+            $fout.puts ""
+        end
+    }
+    $fout.puts ""
+end # arith_op()
+    
+def eq_op(dims)
+    # Equality operations only supported between vectors of equal dimensions
+    type = "tvec#{dims}"
+    $fout.puts "template<typename T1>"
+    $fout.puts "#{type}<T1> operator==(const #{type}<T1> & lhs, const #{type}<T1> & rhs)"
+    $fout.puts "{"
+    $fout.puts "    return #{DIM_NAMES[0, dims].map{|dim| "lhs.#{dim} == rhs.#{dim}"}.join(" && ")};"
+    $fout.puts "}"
+    $fout.puts ""
+    $fout.puts "template<typename T1>"
+    $fout.puts "#{type}<T1> operator!=(const #{type}<T1> & lhs, const #{type}<T1> & rhs)"
+    $fout.puts "{"
+    $fout.puts "    return #{DIM_NAMES[0, dims].map{|dim| "lhs.#{dim} != rhs.#{dim}"}.join(" || ")};"
+    $fout.puts "}"
+    $fout.puts ""
+end # assign_op()
+
+def start_incfile(fname)
+    $fout = File.new(fname, "w")
+    $fout.puts "/*******************************************************************************
+# Copyright (c) 2012 Christopher James Huff
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the \"Software\"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#******************************************************************************/
+
+// This file is generated by genops.rb.
+
+#ifndef #{fname.upcase.gsub('.', '_')}
+#define #{fname.upcase.gsub('.', '_')}
+
+namespace m3d {
+
+"
+end
+
+def end_incfile(fname)
+    $fout.puts "
+} // namespace m3d
+#endif // #{fname.upcase.gsub('.', '_')}
+"
+end
+
+start_incfile("vecops.h")
+
+$fout.puts "//*******************************************************************************"
+$fout.puts "// Arithmetic operators"
+$fout.puts "//*******************************************************************************"
+[2, 3, 4].each {|dims|
+    type = "tvec#{dims}"
+    # Negation: -vector
+    $fout.puts "//*******************************************************************************"
+    $fout.puts "// LHS: #{type}, operator: unary -"
+    $fout.puts "//*******************************************************************************"
+    $fout.puts "template<typename T1>"
+    $fout.puts "#{type}<T1> operator-(const #{type}<T1> & rhs)"
+    $fout.puts "{"
+    $fout.puts "    return #{type}<T1>(#{DIM_NAMES[0, dims].map{|dim| "-rhs.#{dim}"}.join(", ")});"
+    $fout.puts "}"
+    $fout.puts ""
+    
+    # Binary operators
+    ARITH_OPS.each {|op| arith_op(op, dims)}
+}
+
+$fout.puts ""
+$fout.puts "//*******************************************************************************"
+$fout.puts "// Equality tests"
+$fout.puts "//*******************************************************************************"
+[2, 3, 4].each {|dims| eq_op(dims)}
+
+end_incfile("vecops.h")
+
