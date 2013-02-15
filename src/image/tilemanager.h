@@ -1,4 +1,6 @@
 
+
+
 #ifndef TILEMANAGER_H
 #define TILEMANAGER_H
 
@@ -17,6 +19,22 @@ const int32_t kBlockTiles = kBlockWidth*kBlockHeight;
 // *****************************************************************************
 
 // TODO: TileLinearManager, TileQuadtreeManager
+
+// Layout of tiles in memory for quadtree:
+// 0 1 4 5
+// 2 3 6 7
+// 8 9 C D
+// A B E F
+
+
+// Images are organized in tiles and blocks.
+// Tiles are rectangular sets of pixels, sized to make efficient use of CPU caches.
+// Blocks are sets of tiles that are sized for efficient use of disk I/O.
+
+// With 64x64 tiles and 8x8 blocks:
+// 4096 pixels/tile, 16384 B at 32 bpp.
+// 232144 pixels/block, 512x512 pixels, 1 MB at 32 bpp
+// Image dimensions multiple of 64.
 
 class TileBlockManager {
     std::string backingFilePath;

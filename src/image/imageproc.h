@@ -19,8 +19,8 @@ namespace bigimage {
 // 
 // Notes:
 // With block-allocated tiles, the final move is an actual memcpy() of pixel data.
-// With a more flexible allocator that doesn't enforce locality, it could be a copy
-// of a pointer.
+// With a more flexible allocator that doesn't enforce layout in memory, it could
+// be a copy of a pointer.
 
 template<typename imageT>
 class ImageProcJob {

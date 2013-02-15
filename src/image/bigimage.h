@@ -1,23 +1,13 @@
-// Images are organized in tiles and blocks.
-// Tiles are rectangular sets of pixels, sized to make efficient use of CPU caches.
-// Blocks are sets of tiles that are sized for efficient use of disk I/O.
-
-// With 64x64 tiles and 8x8 blocks:
-// 4096 pixels/tile, 16384 B at 32 bpp.
-// 232144 pixels/block, 512x512 pixels, 1 MB at 32 bpp
-// Image dimensions multiple of 64.
-
-
-// Workflow for applying some per-pixel transform
-// load block, hand tiles to processing threads while loading the next block
-// On completion of processing, queue block for writing
-
-
-// Layout of tiles in memory for quadtree:
-// 0 1 4 5
-// 2 3 6 7
-// 8 9 C D
-// A B E F
+// Images are divided up into uniformly sized tiles for division of processing
+// between threads. Each tile contains the pixel data for its portion of the image
+// as a contiguous block, allowing efficient use of caches and disk access.
+// 
+// Different tile managers may exist, with different strategies for laying out
+// tiles in memory to preserve locality of data, reduce copying, etc.
+//
+// Image types are defined with a tile manager and a pixel type, which describes
+// not only the datatype of the pixel but also information such as numeric limits,
+// encoding and conversions, etc.
 
 
 #ifndef BIGIMAGE_H
@@ -33,7 +23,6 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
-// #include <chrono>
 
 #include <boost/format.hpp>
 

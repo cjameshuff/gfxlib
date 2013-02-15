@@ -1,3 +1,5 @@
+Miscellaneous image processing, vector math, and other graphics and simulation related code.
+
 
 A high level of C++11 support is required. Suggested toolchain:
 Minimum of Clang 3.2 (earlier may work, but is not guaranteed)
@@ -24,6 +26,6 @@ make
 sudo make install
 `
 
-Dynamic linking will cause problems. Setting LD_LIBRARY_PATH to include /libcxx-svn/lib will work, but is obviously not ideal.
+Dynamic linking will cause problems. Setting LD_LIBRARY_PATH to include /llvm-svn/lib will work, but is obviously not ideal.
 
 
