@@ -34,11 +34,11 @@ LIBS += -lc++
 
 # -U__STRICT_ANSI__ required for math.h bug on OS X 10.6
 # CFLAGS = -g -O3 -ffast-math -msse4.1
-# CFLAGS = -stdlib=libc++
 CFLAGS += -g -O3 -ffast-math -msse4.1
 CFLAGS += $(DEFINES) $(INCLUDES)
 
-CXXFLAGS = -std=c++11 $(CFLAGS)
+CXXFLAGS += -stdlib=libc++
+CXXFLAGS += -std=c++11 $(CFLAGS)
 
 #******************************************************************************
 # Generate lists of object and dependency files
