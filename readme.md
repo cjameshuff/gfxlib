@@ -1,9 +1,9 @@
 
-Requirements:
-Clang 3.2 (earlier may work)
+A high level of C++11 support is required. Suggested toolchain:
+Minimum of Clang 3.2 (earlier may work, but is not guaranteed)
 libc++ (*not* libstdc++)
 
-At the time of this writing, Clang 3.2 isn't in many repositories, and will likely have to be installed manually. Follow the directions here:
+At the time of this writing, Clang 3.2 isn't in many repositories (not for Mint Linux, anyway), and will likely have to be installed manually. Follow the directions here:
 http://llvm.org/releases/3.2/docs/GettingStarted.html
 
 Target a separate prefix directory to avoid problems with the package system:
@@ -23,3 +23,7 @@ CC=clang CXX=clang++ cmake -G "Unix Makefiles" -DLIBCXX_CXX_ABI=libsupc++ -DLIBC
 make
 sudo make install
 `
+
+Dynamic linking will cause problems. Setting LD_LIBRARY_PATH to include /libcxx-svn/lib will work, but is obviously not ideal.
+
+
