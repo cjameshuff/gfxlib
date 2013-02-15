@@ -70,6 +70,20 @@ using bigimage::TileInfo;
 typedef BigImage<ImageType<PixelTypeRGBA32, TileBlockManager>> BasicImage;
 typedef BasicImage::TileInfo BasicTile;
 
+void WriteImage(BasicImage & img, const std::string & fname)
+{
+    uint32_t * pixels = new uint32_t[img.Width()*img.Height()];
+    
+    img.GetPixels<PixelTypeRGBA32>(pixels);
+    
+    TargaFileInfo tfile(img.Width(), img.Height(), 32);
+    tfile.Write(fname, (uint8_t*)pixels);
+    
+    delete pixels;
+}
+
+
+
 void TestBigImage()
 {
     // bigimage::Workspace work("filestore/data");
@@ -85,19 +99,20 @@ void TestBigImage()
     }
     
     // Color by thread
-    // img.EachTile(&contexts[0], [](Context & ctx, BasicTile & ti){
-    //     ti.EachPixel([&ctx](uint32_t & pix) {
-    //         if(ctx.id < 4)
-    //             pix = (ctx.id + 1)*63*0x00010000;
-    //         else if(ctx.id < 8)
-    //             pix = (ctx.id-3)*63*0x00000100;
-    //         else if(ctx.id < 12)
-    //             pix = (ctx.id-7)*63*0x00000001;
-    //         else
-    //             pix = (ctx.id-11)*63*0x00010101;
-    //         pix |= 0xFF000000;
-    //     });
-    // });
+    img.EachTile(&contexts[0], [](Context & ctx, BasicTile & ti){
+        ti.EachPixel([&ctx](uint32_t & pix) {
+            if(ctx.id < 4)
+                pix = (ctx.id + 1)*63*0x00010000;
+            else if(ctx.id < 8)
+                pix = (ctx.id-3)*63*0x00000100;
+            else if(ctx.id < 12)
+                pix = (ctx.id-7)*63*0x00000001;
+            else
+                pix = (ctx.id-11)*63*0x00010101;
+            pix |= 0xFF000000;
+        });
+    });
+    WriteImage(img, "threadtiles.tga");
     
     // Color by job order: 64 shades of red, green, and blue in repeating sequence
     std::atomic_uint_least32_t jobCtr(0);
@@ -107,12 +122,7 @@ void TestBigImage()
         ti.EachPixel([&](uint32_t & pix) {pix = c;});
     });
     
-    
-    uint32_t * pixels = new uint32_t[img.Width()*img.Height()];
-    img.GetPixels<PixelTypeRGBA32>(pixels);
-    
-    TargaFileInfo tfile(img.Width(), img.Height(), 32);
-    tfile.Write("test.tga", (uint8_t*)pixels);
+    WriteImage(img, "jobordertiles.tga");
     
     img.PrintInfo();
 }
