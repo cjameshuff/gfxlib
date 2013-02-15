@@ -14,15 +14,19 @@ NM=llvm-nm
 
 #******************************************************************************
 
-EXECNAME = simple
+EXECNAME = imagecalc
 
 INCLUDES += -Isrc
+INCLUDES += -Icalculon-0.1/include
 INCLUDES += -I../../src
 
 VPATH = src ../../src
 
 SOURCE = main.cpp
 SOURCE += filestore.cpp
+SOURCE += fltk3utils.cpp
+SOURCE += console.cpp
+SOURCE += opts_ui.cpp
 
 
 # Avoid bunch of errors in math.h: "unknown type name '__extern_always_inline'"
@@ -31,12 +35,20 @@ INCLUDES += -I/llvm-svn/include/c++/v1
 LIBS += -L/llvm-svn/lib
 LIBS += -lc++
 # LIBS += -lstdc++
+#LIBS += -lboost_filesystem -lboost_system
 
 # -U__STRICT_ANSI__ required for math.h bug on OS X 10.6
 # CFLAGS = -g -O3 -ffast-math -msse4.1
 # CFLAGS = -stdlib=libc++
 CFLAGS += -g -O3 -ffast-math -msse4.1
 CFLAGS += $(DEFINES) $(INCLUDES)
+
+LIBS += `freetype-config --libs`
+CFLAGS += `freetype-config --cflags`
+
+LIBS += `fltk-3.0/fltk3-config --use-gl --use-images --libs`
+CFLAGS += `fltk-3.0/fltk3-config --use-gl --use-images --cxxflags`
+LDFLAGS += `fltk-3.0/fltk3-config --use-gl --use-images --ldstaticflags`
 
 CXXFLAGS = -std=c++11 $(CFLAGS)
 
@@ -72,6 +84,14 @@ clean:
 	rm -rf bc
 	rm -f $(EXECNAME)
 	rm -rf $(EXECNAME).dSYM
+
+get_fltk:
+	svn co http://svn.easysw.com/public/fltk/fltk/branches/branch-3.0/ fltk-3.0
+	cd fltk-3.0; ./configure --enable-localpng; make
+
+up_fltk:
+	cd fltk-3.0; svn up
+	cd fltk-3.0; make clean; ./configure --enable-localpng; make
 
 
 $(EXECNAME): $(BITCODE)

@@ -1,0 +1,111 @@
+<title>a very small programming language</title>
+
+<h3>What is it?</h3>
+
+Calculon is a very simple but very fast programming language designed to be
+embedded into other programs. It uses LLVM to generate high-quality machine
+code and is ideal for shaders, user-supplied mathematical formulae, etc.
+
+The Calculon language itself is a pure functional language with support for
+upvalues, tail recursion, and bindings to the standard maths library. It
+supports 3-vectors, reals and booleans as first-class values.
+
+<h3>Where can I get it?</h3>
+
+<blockquote class='link'>
+<a href='../../../tarball/calculon-0.1.tar.gz?uuid=release-0.1'>
+  <img class='link-img' height='22' width='20' alt='[BIN]' src='//cowlark.com/binary.png'>
+</a>
+<a href='../../../tarball/calculon-0.1.tar.gz?uuid=release-0.1'>calculon-0.1.tar.gz</a>
+<p>Version 0.1 is available for download.</p>
+</blockquote>
+
+In addition, you can download
+an <a href="../../../tarball/calculon-tip.tar.gz?uuid=tip">the latest version
+from the VCS</a>. This is not guaranteed to work, or even to build. I'd
+recommend using the formal release above.
+
+Another way of getting the version under development is by
+checking out the source repository using <a href="http://fossil-scm.org">the
+Fossil DVCS</a>. Use the following commands:
+
+<verbatim>fossil clone http://cowlark.com/calculon calculon.fossil
+mkdir calculon
+cd calculon
+fossil open ../calculon.fossil
+</verbatim>
+
+You will need an installation of
+<a href="http://llvm.org/releases/download.html#3.2">LLVM 3.2</a>, which does
+the heavy lifting. If you're on Debian, install the <code>llvm-3.2-dev</code>
+package. If you're on Windows... Calculon should still work, but you'll have
+to install LLVM yourself. (If you make it work on Windows, please get in touch;
+I'm interested.)
+
+<h3>How do I use it?</h3>
+
+  *  <a href="language.wiki">A very brief description of the Calculon language</a>
+  *  <a href="usage.wiki">Using the Calculon library</a>
+
+<h3>Why should I use it?</h3>
+
+Calculon is <i>really simple</i>, and <i>really fast</i>.
+
+The Calculon library itself is 3000 lines of C++ and ships as a set of
+headers. It can be invoked with one line of setup and three lines per script
+you want to load and compile each. Then you get a function pointer which you
+can just run. Don't take my word for it --- <a href="../fractal.cc">look at
+one of the examples</a>.
+
+The Calculon programming language is very simple and is ideally suited to
+evaluating mathematical functions, very very quickly. Here is a minimal
+Calculon script:
+
+<verbatim>0</verbatim>
+
+Here is a slightly more complicated one:
+
+<verbatim>
+/* On input, A and B are vectors */
+let nA: vector = A / A.length;
+let nB: vector = B / B.length;
+let dot(V1: vector, V2: vector) = V1.x*V2.x + V1.y*V2.y + V1.z*V2.z;
+acos(dot(nA, nB))
+</verbatim>
+
+Or if you like, you can do more; one of the sample scripts
+<a href="../fractal.cal">calculates the Mandelbrot set</a>.
+
+Calculon can be configured to use either doubles or floats as the native
+real type. (You can use both types of Calculon &nbsp;script side-by-side in the
+same program.) Vectors are accelerated using SIMD operations where possible.
+External functions can be trivially made available to Calculon scripts and you
+get most of the standard maths library by default.
+
+<h3>Why shouldn't I use it?</h3>
+
+Calculon scripts are <i>pure</i>: they should have no side effects. It's
+perfectly possible to register a function which does have side effects, but in
+general Calculon is better suited for <i>calculating things</i> rather than
+<i>doing things</i>.
+
+Also, you can only return one value from a Calculon script. Calculon is
+better suited for calculating the colour of a pixel, lots of times, rather
+than rendering an entire image in one go.
+
+Calculon is <i>not</i> a Turing-complete programming language.
+
+In addition, Calculon is very new and is probably riddled with bugs. Find
+any? Let me know by logging in using the link in the upper right-hand corner
+of the page and <a href="../reportlist">file a bug</a>.
+
+<h3>Who wrote it?</h3>
+
+I, <a href="http://cowlark.com">David Given</a>, wrote it. Got any comments,
+criticism, cake? Send it to <a href="mailto:dg@cowlark.com">dg@cowlark.com</a>.
+If there's interest, I'll set up a mailing list.
+
+<h3>What's the license?</h3>
+
+Calculon is distributable under the terms of the
+<a href="copying.wiki">Simplified BSD License</a>.

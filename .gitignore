@@ -1,0 +1,5 @@
+*~
+.*
+examples/imagecalc/fltk-3.0
+*.o
+*.bc
