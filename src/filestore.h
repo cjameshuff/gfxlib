@@ -1,29 +1,50 @@
 #ifndef FILESTORE_H
 #define FILESTORE_H
 
-// The file store is a key-value associative structure that stores values in a set of
-// files.
-// If the new value for a key is larger than the old, it is written to the end of the
-// file with the least used space and its location is updated.
-// Over time, files accumulates unused space, which may be cleaned up by moving all
-// values stored in a file to other files. The GC() function cleans the data file with
-// the largest amount of unused space.
+// *****************************************************************************
+// The file store provides a file-backed, expandable memory region with a simple
+// allocator.
+// A key-value associative structure is also implemented, allowing objects to
+// be moved or reallocated without breaking references.
 //
-// The files are stored in an array which allows direct access by ID, and in a linked
-// list which is kept sorted by used space, implementing a simple priority queue with
-// the files with the least used space having priority.
-
-// If no files have space, a new file is created. The file size is a power of 2 multiple
-// of a fixed base size.
-
-// Notes on memory mapping approaches:
-// A file could be mapped to a fixed, large memory space, and remapped to that same space
-// every time the file size is increased. It's unclear how this might interact with multiple
-// threads/processes working in that memory space. Use of mmap() MAP_FIXED is "discouraged",
-// but reasons for this aren't given in the manpage. Boost allows fixed mapping, but there is
-// no documentation of any restrictions or caveats involved.
+// At the lowest level, a fibonacci buddy allocator handles memory in fixed
+// sized blocks. Each size is the sum of the two immediately smaller sizes,
+// starting as: 8, 16, 24, 40, 64...
+// Each block may be split into sub-blocks of the two smaller sizes. The lower
+// block is always the larger one.
+// 
+// The data file grows to sizes from this series as needed by appending blocks
+// of size s-1, where s is the current size of the file, advancing the size to
+// s+1.
 //
-// Alternatively, new files can be created and mapped.
+//
+// -----------------------------------------------------------------------------
+// There are 3 ways to refer to an object:
+// 1: direct pointer to memory-mapped data. Direct pointers give the most direct
+//    access, but can be invalidated by some FileStore operations. Translation
+//    back to an id_t or loc_t is a fairly expensive operation that likely won't
+//    be implemented.
+// 
+// 2: a loc_t encodes block information including block size, and byte offset
+//    into the file. Allocated blocks are aligned to multiple of 8 bytes from
+//    start of file. Locations may also refer to locations within allocated
+//    blocks.
+// 
+// Allocation size field may be ignored, for locations in the interior of an
+// allocated block.
+// 
+// 3: a id_t serves as an abstract handle, allowing objects to be moved around
+//    in memory. Object IDs serve as indices into an array of loc_t's,
+//    so lookup is cheap. Reverse lookup is expensive and unlikely to be
+//    implemented.
+// -----------------------------------------------------------------------------
+//
+// The index file stores number of files, loc_t's of free block lists, loc_t's
+// of objects, and other such data. The object location table is at the end of
+// the index file, allowing the list to grow freely.
+// Operations that move memory blocks around must take care that they properly
+// update the index.
+
 
 #include <stack>
 #include <vector>
@@ -32,115 +53,162 @@
 #include <iostream>
 #include <fstream>
 
-#include <boost/interprocess/file_mapping.hpp>
-#include <boost/interprocess/mapped_region.hpp>
-// #include <boost/interprocess/managed_mapped_file.hpp>
+// #include <boost/interprocess/file_mapping.hpp>
+// #include <boost/interprocess/mapped_region.hpp>
 
 namespace filestore {
 
 
 struct MappedFile {
-    boost::interprocess::file_mapping mappedFile;
-    boost::interprocess::mapped_region region;
+    std::string filePath;
+    int fd;
+    // boost::interprocess::file_mapping mappedFile;
+    // boost::interprocess::mapped_region region;
+    void * baseAddr;
+    size_t fileSize, mapSize;
     
-    MappedFile(const std::string & filePath, size_t size)
-    {
-        std::filebuf fbuf;
-        fbuf.open(filePath, std::ios_base::in | std::ios_base::out | std::ios_base::binary | std::ios_base::trunc);
-        fbuf.pubseekoff(size - 1, std::ios_base::beg);
-        fbuf.sputc(0);
-        fbuf.close();
-        
-        mappedFile = boost::interprocess::file_mapping(filePath.c_str(), boost::interprocess::read_write);
-        region = boost::interprocess::mapped_region(mappedFile, boost::interprocess::read_write, 0, size);
-    }
+    MappedFile(const std::string & fpath, size_t fsize, size_t msize);
+    
+    size_t FileSize() const {return fileSize;}
+    size_t MemSize() const {return mapSize;}
+    
+    // Creates file if necessary, expands to given size if too small.
+    // If file exists and is of at least given size, it is simply mapped as-is.
+    // If given size is 0, full file is mapped.
+    // If already mapped and given map size is <= previous one, maps to same address.
+    void Remap(size_t fsize, size_t msize);
+    
+    void Flush();
 };
 
 
-const int kFileStoreFiles = 4;
+// template<typename T>
+// struct MappedArray {
+//     uint64_t size;
+//     uint64_t capacity;
+//     uint64_t offset;
+//     T * raw;
+//     size_t set_offset(void * base, uint64_t o) {
+//         offset = 0;
+//         raw = (T *)((uint8_t*)base + offset);
+//     }
+// };
+
+// Trivial memory manager
+// template<typename T>
+// struct PackedBlocks {
+//     void * base;
+//     struct block_t {
+//         uint64_t start;
+//         uint64_t size;
+//     };
+//     std::vector<block_t> records;
+//   public:
+//     PackedBlocks() {}
+//     void resize(int idx, size_t size) {}
+// };
+
+typedef uint32_t id_t;
+typedef uint64_t loc_t;
+
+std::string SizeToS(size_t s);
+std::string LocToS(loc_t loc);
+uint64_t BlockBytes(loc_t loc);
+static inline uint64_t BlockSize(loc_t loc) {return (loc >> 56) & 0xFF;}
+static inline uint64_t FileOffset(loc_t loc) {return loc & ((~0ull) >> 8);}
+
+const size_t kNumAllocSizes = 64;
 class FileStore {
   public:
-    typedef uint32_t id_t;
     
   protected:
-    class record_t {
-        // Bit 63 of location is used to indicate which file the object is stored in.
-        // It is the 1-bit index of the file in the files array.
-        uint64_t location = 0;
-        uint64_t size = 0;
-      public:
-        // Uppermost 8 bits of location are reserved for file ID.
-        // 64 petabytes ought to be enough for anyone...
-        uint64_t FileID() const {return location >> 55;}
-        uint64_t FileOffset() const {return location & ((1UL << 55) - 1);}
-        uint64_t Size() const {return size;}
-        void SetLocation(uint64_t fid, uint64_t loc) {location = (fid << 55) | loc;}
-        void SetSize(uint64_t s) {size = s;}
-    };
-    
-    struct file_t {
-        FILE * file = nullptr;
-        uint64_t size = 0;
-        uint64_t available = 0;
-        uint64_t unused = 0;
-        uint64_t objects = 0;
-        file_t * next = nullptr;
+    struct index_t {
+        uint64_t filestoreVersion;
+        loc_t freeLists[64];
+        uint64_t numObjects;
+        uint64_t dataFileSize;
     };
     
     std::string prefix;
+    
+    MappedFile * indexFile;
+    MappedFile * dataFile;
+    
     id_t lastID;
     std::stack<id_t> freeIDs;
-    std::vector<record_t> records;
     
-    uint32_t numObjects;
+    index_t * index;
+    loc_t * objectLocs;
     
-    std::array<file_t, kFileStoreFiles> files;
-    file_t * writeList;
+    size_t mapSize;
     
-    void Write(id_t objID, const uint8_t * data, size_t len);
+    // Buddy allocator
+    // 16 bit file ID, 8 bit size, and a 40 bit offset
+    static loc_t MakeLoc(loc_t loc, uint64_t sizeIdx) {return (sizeIdx << 56) | loc;}
+    static void Split(loc_t loc, loc_t & low, loc_t & high);
+    
+    void PushToFreelist(loc_t loc);
+    loc_t PopFromFreelist(uint64_t sizeIdx);
+    
+    // Allocate memory from free block, splitting if necessary and placing unused fragments in free lists.
+    loc_t AllocFrom(loc_t loc, size_t allocSize);
+    
     
   public:
-    FileStore(const std::string & pfx);
+    FileStore();
     ~FileStore();
     
-    // Read/write the index associating IDs to objects, allowing the FileStore to be made persistent
-    void SaveIndex();
-    void LoadIndex();
+    // Default data file size: 298.2 MB
+    void Create(const std::string & pfx);
+    void Load(const std::string & pfx);
+    void Flush();
     
-    // Files are allowed to grow as needed, and after garbage collection may end with free space.
-    // This truncates unused space at the end of the file to free up disk space.
-    void Trim();
+    void * Data() {return dataFile->baseAddr;}
+    size_t DataSize() const {return dataFile->FileSize();}
+    size_t CountFreeBytes() const;
     
-    // Destroys all contents of the file store and frees all IDs.
+    void ZeroFreeMem();
+    
+    // Destroys all contents of the file store.
     void Reset();
+    
+    // Expand file 0 to contain data in other files, and move data over.
+    // Invalidates any pointers to memory-mapped data.
+    // void Compact();
     
     void Log() const;
     void LogObject(id_t objID) const;
     
+    // Allocate filestore-backed memory
+    loc_t Alloc(size_t allocSize);
+    // Free filestore-backed memory
+    void Free(loc_t loc);
+    
     // Get an ID for a new object. Allocates an ID and record, or reuses a previously
     // freed one.
-    id_t New();
+    id_t New(size_t len);
+    
+    template<typename T>
+    id_t New() {return New(sizeof(T));}
     
     // Release an ID.
     void Free(id_t objID);
     
-    // Return size of object.
-    size_t GetSize(id_t objID) const {return records[objID].Size();}
+    // Return portion of memory mapped to object.
+    // Does not check for existence of object.
+    template<typename T>
+    T * GetObject(id_t objID) {return Get<T*>(objectLocs[objID]);}
+    template<typename T>
+    const T * GetObject(id_t objID) const {return Get<T*>(objectLocs[objID]);}
     
-    // Return true if object has a value
-    // (ID must be allocated...does *NOT* check allocated status of ID.)
-    bool Exists(id_t objID) const {return records[objID].Size() != 0;}
-    
-    // Get value in existing buffer
-    size_t Get(id_t objID, uint8_t * data, size_t len);
-    
-    // Get value, allocated with new[]
-    uint8_t * Get(id_t objID);
-    
-    // Set value. If objID is 0, allocate a new object record and return its ID.
-    id_t Set(id_t objID, const uint8_t * data, size_t len);
-    
-    void GC();
+    template<typename T>
+    T * Get(loc_t loc) {
+        return reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(dataFile->baseAddr) + FileOffset(loc));
+    }
+    template<typename T>
+    const T * Get(loc_t loc) const {
+        return reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(dataFile->baseAddr) + FileOffset(loc));
+    }
 };
 
 } // namespace fstore

@@ -11,7 +11,9 @@ namespace bigimage {
 // *****************************************************************************
 
 // Good tile widths are such that a line from the tile is a multiple of the cache line
-// size. On current hardware, this is often 64 bytes.
+// size. On current hardware, this is often 64 bytes. Tile dimensions should also be
+// powers of 2, to allow bit shifting/masking to be used instead of multiplication and
+// division.
 // Tile dimensions in pixels
 const int32_t kTileWidth = 64;
 const int32_t kTileHeight = 64;
@@ -40,6 +42,16 @@ struct TileInfo {
     TileInfo(int32_t _x, int32_t _y, Tile<imageT> & t):
         pixels(&t.pixels), x(_x), y(_y), references(0) {}
     
+    
+    // Coordinates may be relative to either image or tile origin
+    // template<typename imageT>
+    auto GetPixel(int32_t x, int32_t y)
+        -> pixel_val_t &
+    {
+        int32_t px = x % kTileWidth;
+        int32_t py = y % kTileHeight;
+        return (*pixels)[py*kTileWidth + px];
+    }
     
     // auto EachPixel(const std::function<pixel_val_t(pixel_val_t&)> & fn)
     template<typename fnT>

@@ -52,6 +52,7 @@ struct PixelTypeRGBAf {
 };
 
 
+// *****************************************************************************
 template<typename dpixT, typename spixT>
 void CopyPixels(typename dpixT::pixel_val_t * dst, const typename spixT::pixel_val_t * src, size_t len);
 
@@ -80,6 +81,30 @@ void CopyPixels<PixelTypeRGBA32, PixelTypeRGBAf>(uint32_t * dst, const float4 * 
         CopyPixel<PixelTypeRGBA32, PixelTypeRGBAf>(*dst++, *src++);
 }
 
+// *****************************************************************************
 
+template<typename dpixT, typename spixT, typename fn_t>
+void FilterPixels(typename dpixT::pixel_val_t * dst, const typename spixT::pixel_val_t * src, size_t len, fn_t & fn) {
+    for(int32_t p = 0; p < len; ++p)
+        fn(*dst++, *src++, fn);
+}
+
+
+// *****************************************************************************
+
+
+template<typename dpixT, typename spixT, typename fn_t>
+void BinOp(typename dpixT::pixel_val_t * dst,
+           const typename spixT::pixel_val_t * lhs,
+           const typename spixT::pixel_val_t * rhs,
+           size_t len, fn_t & fn)
+{
+    for(int32_t p = 0; p < len; ++p)
+        fn(*dst++, *lhs++, *rhs++);
+}
+
+
+
+// *****************************************************************************
 } // namespace bigimage
 #endif // PIXELTYPE_H

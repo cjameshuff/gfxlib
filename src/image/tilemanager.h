@@ -1,5 +1,7 @@
 
 
+// Tile managers handle allocation of image tiles and other data describing the
+// image.
 
 #ifndef TILEMANAGER_H
 #define TILEMANAGER_H
@@ -55,8 +57,9 @@ class TileBlockManager {
         
         typename image_t::Tile * tiles;
         if(backingFilePath != "") {
-            backingFile = new filestore::MappedFile(backingFilePath.c_str(), xtiles*ytiles*sizeof(typename image_t::Tile));
-            tiles = static_cast<typename image_t::Tile*>(backingFile->region.get_address());
+            size_t s = xtiles*ytiles*sizeof(typename image_t::Tile);
+            backingFile = new filestore::MappedFile(backingFilePath.c_str(), s, s);
+            tiles = static_cast<typename image_t::Tile*>(backingFile->baseAddr);
         }
         else {
             tiles = new typename image_t::Tile[xtiles*ytiles];

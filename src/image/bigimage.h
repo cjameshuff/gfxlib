@@ -1,13 +1,21 @@
+
+// *****************************************************************************
 // Images are divided up into uniformly sized tiles for division of processing
-// between threads. Each tile contains the pixel data for its portion of the image
-// as a contiguous block, allowing efficient use of caches and disk access.
+// between threads. Each tile contains the pixel data for its portion of the
+// image as a contiguous block, allowing efficient use of caches.
 // 
-// Different tile managers may exist, with different strategies for laying out
-// tiles in memory to preserve locality of data, reduce copying, etc.
+// Tile managers allow use of different strategies for data layout to preserve
+// locality, reduce copying, etc. Hooks may eventually be added to allow
+// preloading, limit memory usage, etc, currently simple on-demand paging is
+// implemented via memory mapping.
 //
 // Image types are defined with a tile manager and a pixel type, which describes
 // not only the datatype of the pixel but also information such as numeric limits,
 // encoding and conversions, etc.
+
+// Implementation notes:
+// Const correctness is currently ignored for the tile traversal functions due
+// to the large amount of code duplication it would cause.
 
 
 #ifndef BIGIMAGE_H
@@ -65,13 +73,10 @@ typedef ImageType<PixelTypeRGBAf, TileBlockManager> ImageTypeRGBAf;
 // BigImage
 // *****************************************************************************
 
-// Minimum image size is 1 block, and size must be a multiple of the tile size.
-// Tile pixel data is laid out in non-linear fashion, but tile info is linearly
-// arranged and contains references to the pixel data.
-//
-// The space-linear tinfo vector is used for spatial addressing of tiles, while
-// the torder vector provides a memory-linear ordering for efficient traversal
-// of tiles.
+// Working image size size must be a multiple of the tile size. Tile managers
+// may place additional constraints on image size.
+// Tile managers may lay out pixel data in non-linear fashion, but tile info is
+// linearly arranged and contains references to the pixel data.
 template<typename imageT>
 class BigImage {
   public:
@@ -98,51 +103,69 @@ class BigImage {
     int32_t Height() const {return height;}
     std::tuple<int32_t, int32_t> Size() const {return std::make_tuple(width, height);}
     
+    // Get vector of linear-ordered tiles.
+    // Intended for efficient look-up of tiles by location.
     std::vector<TileInfo> & GetTiles() {return tinfo;}
     const std::vector<TileInfo> & GetTiles() const {return tinfo;}
     
+    // Get vector of memory-ordered pointers to tiles.
+    // Intended for efficient traversal of all tiles.
     std::vector<TileInfo *> & GetNaturalOrdering() {return torder;}
     const std::vector<TileInfo *> & GetNaturalOrdering() const {return torder;}
     
-    TileInfo & GetTile(int32_t w, int32_t h);
+    // Get tile from pixel coordinates
+    TileInfo & GetTile(int32_t x, int32_t y);
     
-    pixel_val_t & GetPixel(int32_t w, int32_t h);
-    pixel_val_t & GetPixel(TileInfo & tile, int32_t w, int32_t h);
+    // Get pixel.
+    pixel_val_t & GetPixel(int32_t x, int32_t y);
     
+    // Get pixel in tile.
+    // Coordinates may be relative to either image or tile origin.
+    pixel_val_t & GetPixel(TileInfo & tile, int32_t x, int32_t y);
+    
+    // Iterate over all tiles, calling function of form:
+    // void(TileInfo &)
+    // void(ctxT &, TileInfo &)
     template<typename fnT>
     void EachTile(const fnT & fn);
-    
-    template<typename fnT>
-    void EachTile(const Rect & rect, const fnT & fn);
     
     template<typename ctxT, typename fnT>
     void EachTile(ctxT * threadContexts, const fnT & fn);
     
+    // Iterate over tiles that intersect given rect, calling function of form:
+    // void(TileInfo &)
+    // void(ctxT &, TileInfo &)
+    template<typename fnT>
+    void EachTile(const Rect & rect, const fnT & fn);
+    
     template<typename ctxT, typename fnT>
     void EachTile(ctxT * threadContexts, const Rect & rect, const fnT & fn);
     
-    // template<typename ctxT>
-    // void EachTile(ctxT * threadContexts, const std::function<void(ctxT &, TileInfo &)> & fn);
-    // 
-    // template<typename ctxT>
-    // void EachTile(ctxT * threadContexts, const Rect & rect, const std::function<void(ctxT &, TileInfo &)> & fn);
-    
+    // Iterate over each pixel, calling function of form void(pixel_val_t & pix)
     template<typename fnT>
     void EachPixel(const fnT & fn);
+    
+    // Iterate over each pixel, calling function of form void(int32_t x, int32_t y, pixel_val_t & pix)
+    // Coordinates are in image space
     template<typename fnT>
     void EachPixelXY(const fnT & fn);
+    
+    // Get pixels as linear pixel data.
+    // Pixels array must be allocated by caller.
+    // TODO: flip vertical/horizontal, lambda filter
+    template<typename dpixelT>
+    void GetPixels(typename dpixelT::pixel_val_t * pixels);
     
     template<typename dpixelT>
     void GetPixels(const Rect & rect, typename dpixelT::pixel_val_t * pixels);
     
-    template<typename dpixelT>
-    void GetPixels(typename dpixelT::pixel_val_t * pixels);
+    // Set pixels from linear pixel data.
+    // TODO: flip vertical/horizontal, lambda filter
+    template<typename spixelT>
+    void SetPixels(const typename spixelT::pixel_val_t * pixels);
     
     template<typename spixelT>
     void SetPixels(const Rect & rect, const typename spixelT::pixel_val_t * pixels);
-    
-    template<typename spixelT>
-    void SetPixels(const typename spixelT::pixel_val_t * pixels);
     
     void PrintInfo() const;
 };
@@ -177,7 +200,7 @@ auto BigImage<imageT>::GetTile(int32_t x, int32_t y)
 {
     int32_t tx = x/kTileWidth;
     int32_t ty = y/kTileHeight;
-    return tinfo[(ty*xtiles + tx)];
+    return tinfo[ty*xtiles + tx];
 }
 
 template<typename imageT>
@@ -199,7 +222,6 @@ auto BigImage<imageT>::GetPixel(TileInfo & tile, int32_t x, int32_t y)
 
 template<typename imageT>
 template<typename fnT>
-// auto BigImage<imageT>::EachTile(const std::function<void(TileInfo &)> & fn)
 auto BigImage<imageT>::EachTile(const fnT & fn)
     -> void
 {
@@ -209,7 +231,6 @@ auto BigImage<imageT>::EachTile(const fnT & fn)
 
 template<typename imageT>
 template<typename fnT>
-// auto BigImage<imageT>::EachTile(const Rect & rect, const std::function<void(TileInfo &)> & fn)
 auto BigImage<imageT>::EachTile(const Rect & rect, const fnT & fn)
     -> void
 {
@@ -219,8 +240,6 @@ auto BigImage<imageT>::EachTile(const Rect & rect, const fnT & fn)
 
 
 template<typename imageT>
-// template<typename ctxT>
-// auto BigImage<imageT>::EachTile(ctxT * threadContexts, const std::function<void(ctxT &, TileInfo &)> & fn)
 template<typename ctxT, typename fnT>
 auto BigImage<imageT>::EachTile(ctxT * threadContexts, const fnT & fn)
     -> void
@@ -257,8 +276,6 @@ auto BigImage<imageT>::EachTile(ctxT * threadContexts, const fnT & fn)
 
 
 template<typename imageT>
-// template<typename ctxT>
-// auto BigImage<imageT>::EachTile(ctxT * threadContexts, const Rect & rect, const std::function<void(ctxT &, TileInfo &)> & fn)
 template<typename ctxT, typename fnT>
 auto BigImage<imageT>::EachTile(ctxT * threadContexts, const Rect & rect, const fnT & fn)
     -> void
@@ -328,6 +345,7 @@ template<typename imageT>
 template<typename dpixelT>
 auto BigImage<imageT>::GetPixels(const Rect & rect, typename dpixelT::pixel_val_t * pixels) -> void
 {
+    // For each line of each tile, copy line segments from tile to pixel array
     EachTile(rect, [&](TileInfo & ti){
         Rect tr = rect.Intersect(ti.x, ti.y, kTileWidth, kTileHeight);
         int32_t tx = tr.x - ti.x, ty = tr.y - ti.y;// source rect coordinates relative to tile
@@ -350,6 +368,7 @@ template<typename imageT>
 template<typename dpixelT>
 auto BigImage<imageT>::SetPixels(const Rect & rect, const typename dpixelT::pixel_val_t * pixels) -> void
 {
+    // For each line of each tile, copy line segments from source pixel array
     EachTile(rect, [&](TileInfo & ti){
         Rect tr = rect.Intersect(ti.x, ti.y, kTileWidth, kTileHeight);
         int32_t tx = tr.x - ti.x, ty = tr.y - ti.y;// source rect coordinates relative to tile
@@ -372,11 +391,8 @@ template<typename imageT>
 auto BigImage<imageT>::PrintInfo() const -> void
 {
     cerr << "================================\n";
-    const int32_t yblocks = (ytiles + kBlockHeight - 1)/kBlockHeight;
-    const int32_t xblocks = (xtiles + kBlockWidth - 1)/kBlockWidth;
     cerr << format("size: %dx%d\n")% width % height;
     cerr << format("tiles: %dx%d\n")% xtiles % ytiles;
-    cerr << format("blocks: %dx%d\n")% xblocks % yblocks;
 }
 
 } // namespace bigimage

@@ -8,6 +8,8 @@
 #include <cfloat>
 
 #include <boost/format.hpp>
+#include <random>
+#include <functional>
 
 #include "filestore.h"
 #include "image/bigimage.h"
@@ -16,46 +18,161 @@
 using namespace std;
 using boost::format;
 
+using filestore::FileStore;
+using filestore::loc_t;
+
+std::mt19937 rng;
+
+void SetAll(FileStore & fs, uint8_t val)
+{
+    uint8_t * mem = (uint8_t *)fs.Data();
+    size_t size = fs.DataSize();
+}
+
+void SetFreeMem(FileStore & fs, uint8_t val)
+{
+    
+}
+
+void ConsistencyCheck(FileStore & fs)
+{
+    fs.Reset();
+    size_t requested = 0;// bytes requested
+    size_t allocated = 0;// bytes used for allocations
+    size_t reserved = 0;// total bytes used
+    size_t freebytes = 0;// bytes available for allocations
+    std::vector<loc_t> allocs;
+    
+    std::uniform_int_distribution<int> ui64(1, 256);
+    auto rsize = [&]{return ui64(rng)*8;};
+    
+    cout << format("allocation test\n");
+    // Make some allocations
+    for(int j = 0; j < 10240; ++j)
+    {
+        size_t s = rsize();
+        loc_t l = fs.Alloc(s);
+        size_t bs = filestore::BlockBytes(l);
+        
+        if(bs < s) {
+            cout << format("Allocated block too small! Requested %u, got %u\n") % s % bs;
+            return;
+        }
+        
+        allocs.push_back(l);
+        requested += s;
+        allocated += bs;
+    }
+    
+    // Count free memory, verify sum of free + allocated blocks
+    reserved = fs.DataSize();
+    freebytes = fs.CountFreeBytes();
+    
+    if(allocated + freebytes != reserved)
+        cout << format("Inconsistent sizes!\n");
+    
+    cout << format("allocated block/free block overlap test\n");
+    // Fill all allocations with 0xFF
+    // Zero free memory
+    // Check allocations for damage
+    
+    for(auto & l : allocs)
+        memset(fs.Get<uint8_t>(l), 0xFF, filestore::BlockBytes(l));
+    
+    fs.ZeroFreeMem();
+    
+    for(auto & l : allocs) {
+        uint8_t * bytes = fs.Get<uint8_t>(l);
+        for(size_t j = 0, n = filestore::BlockBytes(l); j < n; ++j)
+        {
+            if(bytes[j] != 0xFF)
+            {
+                cout << format("Overlap detected between allocated and free blocks\n");
+                return;
+            }
+        }
+    }
+    
+    cout << format("allocated block/allocated block overlap test\n");
+    // Decrement each byte of all allocations
+    // Check for allocations not containing 0xFE
+    
+    for(auto & l : allocs) {
+        uint8_t * bytes = fs.Get<uint8_t>(l);
+        for(size_t j = 0, n = filestore::BlockBytes(l); j < n; ++j)
+            --(bytes[j]);
+    }
+    
+    for(auto & l : allocs) {
+        uint8_t * bytes = fs.Get<uint8_t>(l);
+        for(size_t j = 0, n = filestore::BlockBytes(l); j < n; ++j)
+        {
+            if(bytes[j] != 0xFE)
+            {
+                cout << format("Overlap detected between allocated blocks\n");
+                return;
+            }
+        }
+    }
+    
+    cout << format("Free memory recount\n");
+    // Recount free memory, verify no damage to freelist structures
+    size_t freebytes2 = fs.CountFreeBytes();
+    if(freebytes != freebytes2)
+        cout << format("Freelist damage detected!\n");
+    
+    cout << format("requested: %s\n")% filestore::SizeToS(requested);
+    cout << format("allocated: %s\n")% filestore::SizeToS(allocated);
+    cout << format("    waste: %s (%0.2f %%)\n")% filestore::SizeToS(allocated - requested) % ((100.0*(allocated - requested))/allocated);
+    cout << format(" reserved: %s\n")% filestore::SizeToS(reserved);
+    cout << format("freebytes: %s\n")% filestore::SizeToS(freebytes);
+}
+
 
 void TestFileStore()
 {
-    using filestore::FileStore;
     std::array<uint8_t, 1024*64> scratchdata;
     
     for(int i = 0; i < scratchdata.size(); ++i)
         scratchdata[i] = i;
     
-    FileStore fs("filestore/data");
+    FileStore fs;
+    fs.Create("filestore/");
+    ConsistencyCheck(fs);
     
-    std::array<FileStore::id_t, 8> objects;
-    for(auto & o : objects)
-        o = fs.New();
+    // std::array<loc_t, 16> allocs;
+    // for(auto & l : allocs)
+    //     l = fs.Alloc(64);
     
-    fs.Log();
+    // for(auto & l : allocs)
+    //     cerr << format("%u:%u\n")% filestore::BlockBytes(l) % filestore::FileOffset(l);
     
-    cerr << format("********************************************\n");
-    cerr << format("\nWriting objects\n");
-    for(auto & o : objects)
-        fs.Set(o, &scratchdata[0], 16);
-    
-    fs.Log();
-    
-    cerr << format("********************************************\n");
-    cerr << format("\nModifying objects\n");
-    for(auto & o : objects)
-        fs.Set(o, &scratchdata[1], 16);
-    
-    fs.Log();
-    
-    cerr << format("********************************************\n");
-    cerr << format("\nRewriting objects\n");
-    for(auto & o : objects)
-        fs.Set(o, &scratchdata[2], 32);
-    
-    fs.Log();
-    fs.GC();
-    fs.GC();
-    fs.Log();
+    // std::array<FileStore::id_t, 8> objects;
+    // for(auto & o : objects)
+    //     o = fs.New();
+    // 
+    // fs.Log();
+    // 
+    // cerr << format("********************************************\n");
+    // cerr << format("\nWriting objects\n");
+    // for(auto & o : objects)
+    //     fs.Set(o, &scratchdata[0], 16);
+    // 
+    // fs.Log();
+    // 
+    // cerr << format("********************************************\n");
+    // cerr << format("\nModifying objects\n");
+    // for(auto & o : objects)
+    //     fs.Set(o, &scratchdata[1], 16);
+    // 
+    // fs.Log();
+    // 
+    // cerr << format("********************************************\n");
+    // cerr << format("\nRewriting objects\n");
+    // for(auto & o : objects)
+    //     fs.Set(o, &scratchdata[2], 32);
+    // 
+    // fs.Log();
 }
 
 using bigimage::BigImage;
@@ -90,6 +207,7 @@ void TestBigImage()
     
     // BigImage<ImageTypeRGBA32> img(1024, 1024, "");
     BasicImage img(1024, 1024, "bigimage.work");
+    // BasicImage img(1024, 1024, "");
     
     struct Context {int id;};
     std::array<Context, kNThreads> contexts;
@@ -100,17 +218,17 @@ void TestBigImage()
     
     // Color by thread
     img.EachTile(&contexts[0], [](Context & ctx, BasicTile & ti){
-        ti.EachPixel([&ctx](uint32_t & pix) {
-            if(ctx.id < 4)
-                pix = (ctx.id + 1)*63*0x00010000;
-            else if(ctx.id < 8)
-                pix = (ctx.id-3)*63*0x00000100;
-            else if(ctx.id < 12)
-                pix = (ctx.id-7)*63*0x00000001;
-            else
-                pix = (ctx.id-11)*63*0x00010101;
-            pix |= 0xFF000000;
-        });
+        uint32_t c;
+        if(ctx.id < 4)
+            c = (ctx.id + 1)*63*0x00010000;
+        else if(ctx.id < 8)
+            c = (ctx.id-3)*63*0x00000100;
+        else if(ctx.id < 12)
+            c = (ctx.id-7)*63*0x00000001;
+        else
+            c = (ctx.id-11)*63*0x00010101;
+        c |= 0xFF000000;
+        ti.EachPixel([&](uint32_t & pix) {pix = c;});
     });
     WriteImage(img, "threadtiles.tga");
     
@@ -131,8 +249,8 @@ void TestBigImage()
 int main(int argc, char * argv[])
 {
     try {
-        // TestFileStore();
-        TestBigImage();
+        TestFileStore();
+        // TestBigImage();
     }
     catch(std::exception & err) {
         cerr << "exception caught: " << err.what() << endl;

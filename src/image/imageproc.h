@@ -22,33 +22,40 @@ namespace bigimage {
 // With a more flexible allocator that doesn't enforce layout in memory, it could
 // be a copy of a pointer.
 
-template<typename imageT>
-class ImageProcJob {
-  protected:
-    void Setup(imageT & image);
-    
-  public:
-    ImageProcJob();
-    ~ImageProcJob();
-    
-    void Execute(imageT & image);
-};
+// template<typename imageT>
+// class ImageProcJob {
+//     typedef typename imageT::pixel_val_t pixel_val_t;
+//     typedef typename TileInfo<imageT> TileInfo;
+//   protected:
+//     void Setup(imageT & image);
+//     
+//   public:
+//     ImageProcJob();
+//     ~ImageProcJob();
+//     
+//     void Execute(imageT & image);
+// };
+// 
+// template<typename imageT>
+// ImageProcJob<imageT>::ImageProcJob() {}
+// 
+// template<typename imageT>
+// ImageProcJob<imageT>::~ImageProcJob() {}
+// 
+// template<typename imageT>
+// auto ImageProcJob<imageT>::Setup(imageT & image) -> void {
+//     // Mark all tiles required by job
+// }
+// 
+// template<typename imageT>
+// auto ImageProcJob<imageT>::Execute(imageT & image) -> void {
+//     Setup(image);
+// }
 
-template<typename imageT>
-ImageProcJob<imageT>::ImageProcJob() {}
 
-template<typename imageT>
-ImageProcJob<imageT>::~ImageProcJob() {}
 
-template<typename imageT>
-auto ImageProcJob<imageT>::Setup(imageT & image) -> void {
-    // Mark all tiles required by job
-}
 
-template<typename imageT>
-auto ImageProcJob<imageT>::Execute(imageT & image) -> void {
-    Setup(image);
-}
+
 
 } // namespace bigimage
 #endif // IMAGEPROC_H
