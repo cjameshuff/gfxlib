@@ -1,7 +1,7 @@
 Miscellaneous image processing, vector math, and other graphics and simulation related code.
 
 
-A high level of C++11 support is required. Suggested toolchain:
+A high level of C++11 support is required, and some code uses the Clang OpenCL-style vector extension. Suggested toolchain:
 Minimum of Clang 3.2 (earlier may work, but is not guaranteed)
 libc++ (*not* libstdc++)
 
